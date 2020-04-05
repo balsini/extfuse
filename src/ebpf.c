@@ -12,7 +12,7 @@
 #include <sys/resource.h>
 
 #include <ebpf.h>
-#include <libbpf.h>
+#include <bpf/libbpf.h>
 #include <bpf_load.h>
 
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,9,0)

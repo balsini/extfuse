@@ -111,7 +111,7 @@ int update_uid_map(pid_t pid, const char *inside_id, int outside_id, int v)
     if (update_map(uid_map, map_path))
 		return -1;
     if (v)
-		printf("Mapped outside user %ld to inside user %s(%d): %s\n",
+		printf("Mapped outside user %ld to inside user %s(%lu): %s\n",
 			(long) outside_id, inside_id, len, uid_map);
 	return 0;
 }
@@ -126,7 +126,7 @@ int update_gid_map(pid_t pid, const char *inside_id, int outside_id, int v)
     if (update_map(gid_map, map_path))
 		return -1;
     if (v)
-		printf("Mapped outside group %ld to inside group %s(%d): %s\n",
+		printf("Mapped outside group %ld to inside group %s(%lu): %s\n",
 			(long) outside_id, inside_id, len, gid_map);
 	return 0;
 }

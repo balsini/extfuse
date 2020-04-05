@@ -2,17 +2,23 @@
  * This module has the kernel code for ExtFUSE
  */
 #define KBUILD_MODNAME "extfuse"
-#include <uapi/linux/bpf.h>
-#include "bpf_helpers.h"
 
+#include <linux/bpf.h>
 #include <linux/version.h>
-#include <linux/fs.h>
-#include <linux/file.h>
-#include <linux/fs_stack.h>
+#include <bpf_helpers.h>
 
+//#include <asm-generic/posix_types.h>
+//
+////#include <linux/version.h>
+////#include <linux/fs.h>
+////#include <linux/file.h>
+////#include <linux/fs_stack.h>
+//
 #include <ebpf.h>
 #include "lookup.h"
 #include "attr.h"
+#include <extfuse.h>
+#include <fuse_i.h>
 
 /********************************************************************
 	HELPERS
@@ -35,6 +41,7 @@
 
 #define HANDLER(F) SEC("fuse/"__stringify(F)) int bpf_func_##F
 
+
 /*
 	BPF_MAP_TYPE_PERCPU_HASH: each CPU core gets its own hash-table.
 	BPF_MAP_TYPE_LRU_PERCPU_HASH: all cores share one hash-table but have they own LRU structures of the table.
@@ -43,7 +50,7 @@ struct bpf_map_def SEC("maps") entry_map = {
 	.type			= BPF_MAP_TYPE_HASH,	// simple hash list
 	.key_size		= sizeof(lookup_entry_key_t),
 	.value_size		= sizeof(lookup_entry_val_t),
-	.max_entries	= MAX_ENTRIES,
+	.max_entries		= MAX_ENTRIES,
 	.map_flags		= BPF_F_NO_PREALLOC,
 };
 
@@ -52,16 +59,16 @@ struct bpf_map_def SEC("maps") attr_map = {
 	.type			= BPF_MAP_TYPE_HASH,	// simple hash list
 	.key_size		= sizeof(lookup_attr_key_t),
 	.value_size		= sizeof(lookup_attr_val_t),
-	.max_entries	= MAX_ENTRIES,
+	.max_entries		= MAX_ENTRIES,
 	.map_flags		= BPF_F_NO_PREALLOC,
 };
 
 /* BPF_MAP_TYPE_PROG_ARRAY must ALWAYS be the last one */
 struct bpf_map_def SEC("maps") handlers = {
-   .type = BPF_MAP_TYPE_PROG_ARRAY,
-   .key_size = sizeof(u32),
-   .value_size = sizeof(u32),
-   .max_entries = FUSE_OPS_COUNT << 1,
+	.type			= BPF_MAP_TYPE_PROG_ARRAY,
+	.key_size		= sizeof(u32),
+	.value_size		= sizeof(u32),
+	.max_entries		= FUSE_OPS_COUNT << 1,
 };
 
 int SEC("fuse") fuse_xdp_main_handler(void *ctx)
@@ -82,13 +89,13 @@ int SEC("fuse") fuse_xdp_main_handler(void *ctx)
 
 static int gen_entry_key(void *ctx, int param, const char *op, lookup_entry_key_t *key)
 {
-	int64_t ret = bpf_fuse_read_args(ctx, NODEID, &key->nodeid, sizeof(u64));
+	int64_t ret = bpf_extfuse_read_args(ctx, NODEID, &key->nodeid, sizeof(u64));
 	if (ret < 0) {
 		PRINTK("%s: Failed to read nodeid: %d!\n", op, ret);
 		return ret;
 	}
 
-	ret = bpf_fuse_read_args(ctx, param, key->name, NAME_MAX);
+	ret = bpf_extfuse_read_args(ctx, param, key->name, NAME_MAX);
 	if (ret < 0) {
 		PRINTK("%s: Failed to read param %d: %d!\n", op, param, ret);
 		return ret;
@@ -99,7 +106,7 @@ static int gen_entry_key(void *ctx, int param, const char *op, lookup_entry_key_
 
 static int gen_attr_key(void *ctx, int param, const char *op, lookup_attr_key_t *key)
 {
-	int64_t ret = bpf_fuse_read_args(ctx, NODEID, &key->nodeid, sizeof(u64));
+	int64_t ret = bpf_extfuse_read_args(ctx, NODEID, &key->nodeid, sizeof(u64));
 	if (ret < 0) {
 		PRINTK("%s: Failed to read nodeid: %d!\n", op, ret);
 		return ret;
@@ -200,7 +207,7 @@ HANDLER(FUSE_LOOKUP)(void *ctx)
 	}
 
 	/* populate output */
-	ret = bpf_fuse_write_args(ctx, OUT_PARAM_0, &out, sizeof(out));
+	ret = bpf_extfuse_write_args(ctx, OUT_PARAM_0, &out, sizeof(out));
 	if (ret) {
 		PRINTK("LOOKUP: Failed to write param 0: %d!\n", ret);
 		return UPCALL;
@@ -229,7 +236,7 @@ HANDLER(FUSE_GETATTR)(void *ctx)
 	if (attr->stale) {
 		/* what does the caller want? */
 		struct fuse_getattr_in inarg;
-		ret = bpf_fuse_read_args(ctx, IN_PARAM_0_VALUE, &inarg, sizeof(inarg));
+		ret = bpf_extfuse_read_args(ctx, IN_PARAM_0_VALUE, &inarg, sizeof(inarg));
 		if (ret < 0) {
 			PRINTK("GETATTR: Failed to read param 0: %d!\n", ret);
 			return UPCALL;
@@ -246,7 +253,7 @@ HANDLER(FUSE_GETATTR)(void *ctx)
 	PRINTK("GETATTR(0x%llx): %lld\n", key.nodeid, attr->out.attr.ino);
 
 	/* populate output */
-	ret = bpf_fuse_write_args(ctx, OUT_PARAM_0, &attr->out, sizeof(attr->out));
+	ret = bpf_extfuse_write_args(ctx, OUT_PARAM_0, &attr->out, sizeof(attr->out));
 	if (ret) {
 		PRINTK("GETATTR: Failed to write param 0: %d!\n", ret);
 		return UPCALL;
