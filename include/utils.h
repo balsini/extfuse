@@ -5,12 +5,15 @@
 
 /* A simple error-handling function: print an error message based
    on the value in 'errno' and terminate the calling process */
-#define errExit(msg)    do { perror(msg); goto error; } while (0)
+#define errExit(msg)                                                           \
+	do {                                                                   \
+		perror(msg);                                                   \
+		goto error;                                                    \
+	} while (0)
 
-enum {
-	SETGROUPS_NONE = -1,
-	SETGROUPS_DENY = 0,
-	SETGROUPS_ALLOW = 1,
+enum { SETGROUPS_NONE = -1,
+       SETGROUPS_DENY = 0,
+       SETGROUPS_ALLOW = 1,
 };
 
 #define ROOT_UID "0"
