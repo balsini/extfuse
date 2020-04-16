@@ -31,45 +31,43 @@
 #ifndef DEBUGNOW
 #define PRINTK(fmt, ...)
 #else
-#define PRINTK(fmt, ...)                                               \
-                ({                                                      \
-                        char ____fmt[] = fmt;                           \
-                        bpf_trace_printk(____fmt, sizeof(____fmt),      \
-                                     ##__VA_ARGS__);                    \
-                })
+#define PRINTK(fmt, ...)                                                       \
+	({                                                                     \
+		char ____fmt[] = fmt;                                          \
+		bpf_trace_printk(____fmt, sizeof(____fmt), ##__VA_ARGS__);     \
+	})
 #endif
 
-//#define HANDLER(F) SEC("extfuse/"__stringify(F)) int bpf_func_##F
-#define HANDLER(F) SEC("extfuse/"__stringify(FUNC_##F)) int bpf_func_##F
-
+#define HANDLER(F) SEC("extfuse/" __stringify(FUNC_##F)) int bpf_func_##F
 
 /*
-	BPF_MAP_TYPE_PERCPU_HASH: each CPU core gets its own hash-table.
-	BPF_MAP_TYPE_LRU_PERCPU_HASH: all cores share one hash-table but have they own LRU structures of the table.
-*/
+ * BPF_MAP_TYPE_PERCPU_HASH: each CPU core gets its own hash-table.
+ * BPF_MAP_TYPE_LRU_PERCPU_HASH: all cores share one hash-table but have they
+ * own LRU structures of the table.
+ */
 struct bpf_map_def SEC("maps") entry_map = {
-	.type			= BPF_MAP_TYPE_HASH,	// simple hash list
-	.key_size		= sizeof(lookup_entry_key_t),
-	.value_size		= sizeof(lookup_entry_val_t),
-	.max_entries		= MAX_ENTRIES,
-	.map_flags		= BPF_F_NO_PREALLOC,
+	.type = BPF_MAP_TYPE_HASH, // simple hash list
+	.key_size = sizeof(lookup_entry_key_t),
+	.value_size = sizeof(lookup_entry_val_t),
+	.max_entries = MAX_ENTRIES,
+	.map_flags = BPF_F_NO_PREALLOC,
 };
 
 /* order of maps is important */
 struct bpf_map_def SEC("maps") attr_map = {
-	.type			= BPF_MAP_TYPE_HASH,	// simple hash list
-	.key_size		= sizeof(lookup_attr_key_t),
-	.value_size		= sizeof(lookup_attr_val_t),
-	.max_entries		= MAX_ENTRIES,
-	.map_flags		= BPF_F_NO_PREALLOC,
+	.type = BPF_MAP_TYPE_HASH, // simple hash list
+	.key_size = sizeof(lookup_attr_key_t),
+	.value_size = sizeof(lookup_attr_val_t),
+	.max_entries = MAX_ENTRIES,
+	.map_flags = BPF_F_NO_PREALLOC,
 };
 
 /* BPF_MAP_TYPE_PROG_ARRAY must ALWAYS be the last one */
 struct bpf_map_def SEC("maps") handlers = {
-	.type			= BPF_MAP_TYPE_PROG_ARRAY,
-	.key_size		= sizeof(u32),
-	.value_size		= sizeof(u32),
-	.max_entries		= FUSE_OPS_COUNT << 1,
+	.type = BPF_MAP_TYPE_PROG_ARRAY,
+	.key_size = sizeof(u32),
+	.value_size = sizeof(u32),
+	.max_entries = FUSE_OPS_COUNT << 1,
 };
 
 int SEC("extfuse") fuse_xdp_main_handler(void *ctx)
@@ -79,19 +77,19 @@ int SEC("extfuse") fuse_xdp_main_handler(void *ctx)
 
 	PRINTK("Opcode %d\n", opcode);
 	if (opcode > 0) {
-		bpf_tail_call(ctx, &handlers, opcode+FUSE_OPS_COUNT);
-		//((void *)BPF_FUNC_tail_call)(ctx, &handlers, opcode+FUSE_OPS_COUNT);
+		bpf_tail_call(ctx, &handlers, opcode + FUSE_OPS_COUNT);
 		return RETURN;
 	} else {
 		bpf_tail_call(ctx, &handlers, -opcode);
-		//((void *)BPF_FUNC_tail_call)(ctx, &handlers, -opcode);
 		return UPCALL;
 	}
 }
 
-static int gen_entry_key(void *ctx, int param, const char *op, lookup_entry_key_t *key)
+static int gen_entry_key(void *ctx, int param, const char *op,
+			 lookup_entry_key_t *key)
 {
-	int64_t ret = bpf_extfuse_read_args(ctx, NODEID, &key->nodeid, sizeof(u64));
+	int64_t ret =
+		bpf_extfuse_read_args(ctx, NODEID, &key->nodeid, sizeof(u64));
 	if (ret < 0) {
 		PRINTK("%s: Failed to read nodeid: %d!\n", op, ret);
 		return ret;
@@ -106,9 +104,11 @@ static int gen_entry_key(void *ctx, int param, const char *op, lookup_entry_key_
 	return 0;
 }
 
-static int gen_attr_key(void *ctx, int param, const char *op, lookup_attr_key_t *key)
+static int gen_attr_key(void *ctx, int param, const char *op,
+			lookup_attr_key_t *key)
 {
-	int64_t ret = bpf_extfuse_read_args(ctx, NODEID, &key->nodeid, sizeof(u64));
+	int64_t ret =
+		bpf_extfuse_read_args(ctx, NODEID, &key->nodeid, sizeof(u64));
 	if (ret < 0) {
 		PRINTK("%s: Failed to read nodeid: %d!\n", op, ret);
 		return ret;
@@ -118,31 +118,32 @@ static int gen_attr_key(void *ctx, int param, const char *op, lookup_attr_key_t 
 }
 
 static void create_lookup_entry(struct fuse_entry_out *out,
-				lookup_entry_val_t *entry, struct fuse_attr_out *attr)
+				lookup_entry_val_t *entry,
+				struct fuse_attr_out *attr)
 {
 	memset(out, 0, sizeof(*out));
-	out->nodeid		= entry->nodeid;
-	out->generation		= entry->generation;
-	out->entry_valid	= entry->entry_valid;
-	out->entry_valid_nsec	= entry->entry_valid_nsec;
+	out->nodeid = entry->nodeid;
+	out->generation = entry->generation;
+	out->entry_valid = entry->entry_valid;
+	out->entry_valid_nsec = entry->entry_valid_nsec;
 	if (attr) {
-		out->attr_valid		= attr->attr_valid;
-		out->attr_valid_nsec	= attr->attr_valid_nsec;
-		out->attr.ino		= attr->attr.ino;
-		out->attr.mode		= attr->attr.mode;
-		out->attr.nlink		= attr->attr.nlink;
-		out->attr.uid		= attr->attr.uid;
-		out->attr.gid		= attr->attr.gid;
-		out->attr.rdev		= attr->attr.rdev;
-		out->attr.size		= attr->attr.size;
-		out->attr.blksize	= attr->attr.blksize;
-		out->attr.blocks	= attr->attr.blocks;
-		out->attr.atime		= attr->attr.atime;
-		out->attr.mtime		= attr->attr.mtime;
-		out->attr.ctime		= attr->attr.ctime;
-		out->attr.atimensec	= attr->attr.atimensec;
-		out->attr.mtimensec	= attr->attr.mtimensec;
-		out->attr.ctimensec	= attr->attr.ctimensec;
+		out->attr_valid = attr->attr_valid;
+		out->attr_valid_nsec = attr->attr_valid_nsec;
+		out->attr.ino = attr->attr.ino;
+		out->attr.mode = attr->attr.mode;
+		out->attr.nlink = attr->attr.nlink;
+		out->attr.uid = attr->attr.uid;
+		out->attr.gid = attr->attr.gid;
+		out->attr.rdev = attr->attr.rdev;
+		out->attr.size = attr->attr.size;
+		out->attr.blksize = attr->attr.blksize;
+		out->attr.blocks = attr->attr.blocks;
+		out->attr.atime = attr->attr.atime;
+		out->attr.mtime = attr->attr.mtime;
+		out->attr.ctime = attr->attr.ctime;
+		out->attr.atimensec = attr->attr.atimensec;
+		out->attr.mtimensec = attr->attr.mtimensec;
+		out->attr.ctimensec = attr->attr.ctimensec;
 	}
 }
 
@@ -157,11 +158,10 @@ HANDLER(FUSE_LOOKUP)(void *ctx)
 	const char *name = (const char *)args->in.args[0].value;
 	const unsigned int len = args->in.args[0].size - 1;
 
-	PRINTK("LOOKUP: parent nodeid: 0x%llx name: %s(%d)\n",
-			nid, name, len);
+	PRINTK("LOOKUP: parent nodeid: 0x%llx name: %s(%d)\n", nid, name, len);
 #endif
 
-	lookup_entry_key_t key = {0, {0}};
+	lookup_entry_key_t key = { 0, { 0 } };
 
 	memset(key.name, 0, NAME_MAX);
 	ret = gen_entry_key(ctx, IN_PARAM_0_VALUE, "LOOKUP", &key);
@@ -174,36 +174,38 @@ HANDLER(FUSE_LOOKUP)(void *ctx)
 	if (!entry || entry->stale) {
 		if (entry && entry->stale)
 			PRINTK("LOOKUP: STALE key name: %s nodeid: 0x%llx\n",
-				key.name, key.nodeid);
+			       key.name, key.nodeid);
 		else
 			PRINTK("LOOKUP: No entry for node %s\n", key.name);
 		return UPCALL;
 	}
 
-	PRINTK("LOOKUP(0x%llx, %s): nlookup %lld\n",
-		key.nodeid, key.name, entry->nlookup);
+	PRINTK("LOOKUP(0x%llx, %s): nlookup %lld\n", key.nodeid, key.name,
+	       entry->nlookup);
 
 	/* prepare output */
 	struct fuse_entry_out out;
 	uint64_t nodeid = entry->nodeid;
 
-
 	/* negative entries have no attr */
 	if (!nodeid) {
 		create_lookup_entry(&out, entry, NULL);
 	} else {
-		lookup_attr_val_t *attr = bpf_map_lookup_elem(&attr_map, &nodeid);
+		lookup_attr_val_t *attr =
+			bpf_map_lookup_elem(&attr_map, &nodeid);
 		if (!attr || attr->stale) {
 			if (attr && attr->stale)
-				PRINTK("LOOKUP: STALE attr for node: 0x%llx\n", nodeid);
+				PRINTK("LOOKUP: STALE attr for node: 0x%llx\n",
+				       nodeid);
 			else {
-				PRINTK("LOOKUP: No attr for node 0x%llx\n", nodeid);
+				PRINTK("LOOKUP: No attr for node 0x%llx\n",
+				       nodeid);
 				return UPCALL;
 			}
 		}
 
-		PRINTK("LOOKUP nodeid 0x%llx attr ino: 0x%llx\n",
-				entry->nodeid, attr->out.attr.ino);
+		PRINTK("LOOKUP nodeid 0x%llx attr ino: 0x%llx\n", entry->nodeid,
+		       attr->out.attr.ino);
 
 		create_lookup_entry(&out, entry, &attr->out);
 	}
@@ -222,7 +224,7 @@ HANDLER(FUSE_LOOKUP)(void *ctx)
 
 HANDLER(FUSE_GETATTR)(void *ctx)
 {
-	lookup_attr_key_t key = {0};
+	lookup_attr_key_t key = { 0 };
 	int ret = gen_attr_key(ctx, IN_PARAM_0_VALUE, "GETATTR", &key);
 	if (ret < 0)
 		return UPCALL;
@@ -238,7 +240,8 @@ HANDLER(FUSE_GETATTR)(void *ctx)
 	if (attr->stale) {
 		/* what does the caller want? */
 		struct fuse_getattr_in inarg;
-		ret = bpf_extfuse_read_args(ctx, IN_PARAM_0_VALUE, &inarg, sizeof(inarg));
+		ret = bpf_extfuse_read_args(ctx, IN_PARAM_0_VALUE, &inarg,
+					    sizeof(inarg));
 		if (ret < 0) {
 			PRINTK("GETATTR: Failed to read param 0: %d!\n", ret);
 			return UPCALL;
@@ -247,7 +250,7 @@ HANDLER(FUSE_GETATTR)(void *ctx)
 		/* check if the attr that the caller wants is stale */
 		if (attr->stale & inarg.dummy) {
 			PRINTK("GETATTR: STALE attr mask: 0x%x stale: 0x%x for node: 0x%llx\n",
-				inarg.dummy, attr->stale, key.nodeid);
+			       inarg.dummy, attr->stale, key.nodeid);
 			return UPCALL;
 		}
 	}
@@ -255,7 +258,8 @@ HANDLER(FUSE_GETATTR)(void *ctx)
 	PRINTK("GETATTR(0x%llx): %lld\n", key.nodeid, attr->out.attr.ino);
 
 	/* populate output */
-	ret = bpf_extfuse_write_args(ctx, OUT_PARAM_0, &attr->out, sizeof(attr->out));
+	ret = bpf_extfuse_write_args(ctx, OUT_PARAM_0, &attr->out,
+				     sizeof(attr->out));
 	if (ret) {
 		PRINTK("GETATTR: Failed to write param 0: %d!\n", ret);
 		return UPCALL;
