@@ -35,4 +35,4 @@ $(OBJS): %.o:%.c
 		-O2 -emit-llvm \
  		$(LINUXINCLUDE) -I../include \
 		-include $(LINUX_HEADERS)/include/linux/kconfig.h \
- 		-c $< -o -| $(LLC) -march=bpf -filetype=obj -o $@
+ 		-c $< -o - | $(LLC) -march=bpf -filetype=obj -o $@

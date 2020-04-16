@@ -3,10 +3,6 @@
  */
 #define KBUILD_MODNAME "extfuse"
 
-#include <linux/bpf.h>
-#include <linux/version.h>
-#include <bpf_helpers.h>
-
 //#include <asm-generic/posix_types.h>
 //
 ////#include <linux/version.h>
@@ -14,10 +10,14 @@
 ////#include <linux/file.h>
 ////#include <linux/fs_stack.h>
 //
-#include <ebpf.h>
-#include "lookup.h"
-#include "attr.h"
+#include <linux/version.h>
+#include <linux/bpf.h>
+#include <fuse_kernel.h> // to stringify HANDLERs
+#include <bpf_helpers.h>
+#include <extfuse_bpf.h>
 #include <extfuse.h>
+#include <extfuse/attr.h>
+#include <extfuse/lookup.h>
 #include <fuse_i.h>
 
 /********************************************************************
@@ -39,7 +39,8 @@
                 })
 #endif
 
-#define HANDLER(F) SEC("fuse/"__stringify(F)) int bpf_func_##F
+//#define HANDLER(F) SEC("extfuse/"__stringify(F)) int bpf_func_##F
+#define HANDLER(F) SEC("extfuse/"__stringify(FUNC_##F)) int bpf_func_##F
 
 
 /*
@@ -71,18 +72,19 @@ struct bpf_map_def SEC("maps") handlers = {
 	.max_entries		= FUSE_OPS_COUNT << 1,
 };
 
-int SEC("fuse") fuse_xdp_main_handler(void *ctx)
+int SEC("extfuse") fuse_xdp_main_handler(void *ctx)
 {
-    struct fuse_args *args = (struct fuse_args *)ctx;
-    int opcode = (int)args->in.h.opcode;
+	struct fuse_args *args = (struct fuse_args *)ctx;
+	int opcode = (int)args->in.h.opcode;
 
-    PRINTK("Opcode %d\n", opcode);
-
+	PRINTK("Opcode %d\n", opcode);
 	if (opcode > 0) {
 		bpf_tail_call(ctx, &handlers, opcode+FUSE_OPS_COUNT);
+		//((void *)BPF_FUNC_tail_call)(ctx, &handlers, opcode+FUSE_OPS_COUNT);
 		return RETURN;
 	} else {
 		bpf_tail_call(ctx, &handlers, -opcode);
+		//((void *)BPF_FUNC_tail_call)(ctx, &handlers, -opcode);
 		return UPCALL;
 	}
 }
@@ -101,7 +103,7 @@ static int gen_entry_key(void *ctx, int param, const char *op, lookup_entry_key_
 		return ret;
 	}
 
-	return 0;	
+	return 0;
 }
 
 static int gen_attr_key(void *ctx, int param, const char *op, lookup_attr_key_t *key)
@@ -119,28 +121,28 @@ static void create_lookup_entry(struct fuse_entry_out *out,
 				lookup_entry_val_t *entry, struct fuse_attr_out *attr)
 {
 	memset(out, 0, sizeof(*out));
-	out->nodeid				= entry->nodeid;
-	out->generation			= entry->generation;
-	out->entry_valid		= entry->entry_valid;
+	out->nodeid		= entry->nodeid;
+	out->generation		= entry->generation;
+	out->entry_valid	= entry->entry_valid;
 	out->entry_valid_nsec	= entry->entry_valid_nsec;
 	if (attr) {
-		out->attr_valid			= attr->attr_valid;
+		out->attr_valid		= attr->attr_valid;
 		out->attr_valid_nsec	= attr->attr_valid_nsec;
-    	out->attr.ino			= attr->attr.ino;
-    	out->attr.mode			= attr->attr.mode;
-    	out->attr.nlink			= attr->attr.nlink;
-    	out->attr.uid			= attr->attr.uid;
-    	out->attr.gid			= attr->attr.gid;
-    	out->attr.rdev			= attr->attr.rdev;
-    	out->attr.size			= attr->attr.size;
-    	out->attr.blksize		= attr->attr.blksize;
-    	out->attr.blocks		= attr->attr.blocks;
-    	out->attr.atime			= attr->attr.atime;
-    	out->attr.mtime			= attr->attr.mtime;
-    	out->attr.ctime			= attr->attr.ctime;
-    	out->attr.atimensec		= attr->attr.atimensec;
-    	out->attr.mtimensec		= attr->attr.mtimensec;
-    	out->attr.ctimensec		= attr->attr.ctimensec;
+		out->attr.ino		= attr->attr.ino;
+		out->attr.mode		= attr->attr.mode;
+		out->attr.nlink		= attr->attr.nlink;
+		out->attr.uid		= attr->attr.uid;
+		out->attr.gid		= attr->attr.gid;
+		out->attr.rdev		= attr->attr.rdev;
+		out->attr.size		= attr->attr.size;
+		out->attr.blksize	= attr->attr.blksize;
+		out->attr.blocks	= attr->attr.blocks;
+		out->attr.atime		= attr->attr.atime;
+		out->attr.mtime		= attr->attr.mtime;
+		out->attr.ctime		= attr->attr.ctime;
+		out->attr.atimensec	= attr->attr.atimensec;
+		out->attr.mtimensec	= attr->attr.mtimensec;
+		out->attr.ctimensec	= attr->attr.ctimensec;
 	}
 }
 
@@ -167,7 +169,7 @@ HANDLER(FUSE_LOOKUP)(void *ctx)
 		return UPCALL;
 
 	//PRINTK("key name: %s nodeid: 0x%llx\n", key.name, key.nodeid);
-	
+
 	lookup_entry_val_t *entry = bpf_map_lookup_elem(&entry_map, &key);
 	if (!entry || entry->stale) {
 		if (entry && entry->stale)
@@ -262,6 +264,7 @@ HANDLER(FUSE_GETATTR)(void *ctx)
 	return RETURN;
 }
 
+#if 0
 HANDLER(FUSE_READ)(void *ctx)
 {
 	lookup_attr_key_t key = {0};
@@ -280,8 +283,8 @@ HANDLER(FUSE_READ)(void *ctx)
 #endif
 
 	/* mark as stale to prevent future references to cached attrs */
-	__sync_fetch_and_add(&attr->stale, FATTR_ATIME);									
-																			
+	__sync_fetch_and_add(&attr->stale, FATTR_ATIME);
+
 	/* delete to prevent future cached attrs */
 	//bpf_map_delete_elem(&attr_map, &key.nodeid);
 	PRINTK("READ: marked stale attr for node 0x%llx\n", key.nodeid);
@@ -350,46 +353,46 @@ HANDLER(FUSE_FLUSH)(void *ctx)
 
 #ifndef DEBUGNOW
 static int remove(void *ctx, int param, char *op, lookup_entry_key_t *key)
-{																			
-	memset(key->name, 0, NAME_MAX);											
-																			
-	if (gen_entry_key(ctx, param, op, key))								
-		return UPCALL;														
-																			
-	/* lookup entry using its key <parent inode number, name> */			
-	lookup_entry_val_t *entry = bpf_map_lookup_elem(&entry_map, key);		
-	if (!entry || entry->stale)												
-		return UPCALL;														
-																			
-	/* mark as stale to prevent future cached lookups for this entry */		
-	__sync_fetch_and_add(&entry->stale, 1);									
-																			
-	PRINTK("%s key name: %s nodeid: 0x%llx", op, key->name, key->nodeid);		
-	PRINTK("\t nlookup %lld Marked Stale!\n", entry->nlookup);				
-																			
-	/*																		
-	 * if the entry is negative (i.e., nodeid=0) or has only one reference	
-	 * (i.e., nlookup=1), delete it because the user-space does not track	
-	 * negative entries, and knows about entries with single reference.		
-	 */																		
-	uint64_t nodeid = entry->nodeid;										
-	if (nodeid) {															
-		bpf_map_delete_elem(&attr_map, &nodeid);							
-		PRINTK("\t Deleted stale attr for node 0x%llx\n", nodeid);			
-	}																		
-	if (entry->nlookup <= 1) {												
-		bpf_map_delete_elem(&entry_map, key);								
-		PRINTK("\t Deleted stale node 0x%llx\n", nodeid);					
-	}																		
-																			
-	return UPCALL;															
+{
+	memset(key->name, 0, NAME_MAX);
+
+	if (gen_entry_key(ctx, param, op, key))
+		return UPCALL;
+
+	/* lookup entry using its key <parent inode number, name> */
+	lookup_entry_val_t *entry = bpf_map_lookup_elem(&entry_map, key);
+	if (!entry || entry->stale)
+		return UPCALL;
+
+	/* mark as stale to prevent future cached lookups for this entry */
+	__sync_fetch_and_add(&entry->stale, 1);
+
+	PRINTK("%s key name: %s nodeid: 0x%llx", op, key->name, key->nodeid);
+	PRINTK("\t nlookup %lld Marked Stale!\n", entry->nlookup);
+
+	/*
+	 * if the entry is negative (i.e., nodeid=0) or has only one reference
+	 * (i.e., nlookup=1), delete it because the user-space does not track
+	 * negative entries, and knows about entries with single reference.
+	 */
+	uint64_t nodeid = entry->nodeid;
+	if (nodeid) {
+		bpf_map_delete_elem(&attr_map, &nodeid);
+		PRINTK("\t Deleted stale attr for node 0x%llx\n", nodeid);
+	}
+	if (entry->nlookup <= 1) {
+		bpf_map_delete_elem(&entry_map, key);
+		PRINTK("\t Deleted stale node 0x%llx\n", nodeid);
+	}
+
+	return UPCALL;
 }
 #endif
 
 HANDLER(FUSE_RENAME)(void *ctx)
 {
 #ifndef DEBUGNOW
-	lookup_entry_key_t key = {0, {0}};										
+	lookup_entry_key_t key = {0, {0}};
 	remove(ctx, IN_PARAM_1_VALUE, "RENAME", &key);
 	return remove(ctx, IN_PARAM_2_VALUE, "RENAME", &key);
 #else
@@ -464,7 +467,7 @@ HANDLER(FUSE_RENAME)(void *ctx)
 HANDLER(FUSE_RMDIR)(void *ctx)
 {
 #ifndef DEBUGNOW
-	lookup_entry_key_t key = {0, {0}};										
+	lookup_entry_key_t key = {0, {0}};
 	return remove(ctx, IN_PARAM_0_VALUE, "RMDIR", &key);
 #else
 	lookup_entry_key_t key = {0, {0}};
@@ -537,6 +540,7 @@ HANDLER(FUSE_UNLINK)(void *ctx)
 	return UPCALL;
 #endif
 }
+#endif
 
 char _license[] SEC("license") = "GPL";
 uint32_t _version SEC("version") = LINUX_VERSION_CODE;

@@ -10,16 +10,16 @@
 
 typedef enum {
     OPCODE = 0,
-    NODEID, 
+    NODEID,
     NUM_IN_ARGS,
-    NUM_OUT_ARGS, 
+    NUM_OUT_ARGS,
     IN_PARAM_0_SIZE,
     IN_PARAM_0_VALUE,
     IN_PARAM_1_SIZE,
     IN_PARAM_1_VALUE,
     IN_PARAM_2_SIZE,
     IN_PARAM_2_VALUE,
-    OUT_PARAM_0,  
+    OUT_PARAM_0,
     OUT_PARAM_1,
 } fuse_arg_t;
 
@@ -42,7 +42,7 @@ typedef struct ebpf_ctrl_key {
 } ebpf_ctrl_key_t;
 
 typedef struct ebpf_handler {
-	int prog_fd; 
+	int prog_fd;
 } ebpf_handler_t;
 
 /* init/finalize */

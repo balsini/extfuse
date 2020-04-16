@@ -15,7 +15,7 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 
-#include <ebpf.h>
+#include <extfuse_bpf.h>
 
 #include <mntent.h>
 #include <sys/capability.h>
